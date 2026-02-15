@@ -4,6 +4,10 @@ Clipboard security monitor for macOS. Watches your clipboard, encrypts and store
 
 Lives in the menu bar as `✂` with a countdown timer.
 
+| Menu Bar | Settings |
+|:---:|:---:|
+| ![Menu Bar](assets/clippy-menu-bar.png) | ![Settings](assets/clippy-settings.png) |
+
 ## Features
 
 - **Clipboard monitoring** -- polls `pbpaste` at 500ms intervals with SHA-256 change detection
