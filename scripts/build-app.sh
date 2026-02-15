@@ -55,11 +55,19 @@ cat > "$CONTENTS/Info.plist" << PLIST
     <string>14.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>NSHighResolutionCapable</key>
     <true/>
 </dict>
 </plist>
 PLIST
+
+# Copy app icon
+if [ -f "assets/AppIcon.icns" ]; then
+  cp assets/AppIcon.icns "$RESOURCES/AppIcon.icns"
+  echo "==> Icon copied"
+fi
 
 # Ad-hoc code sign
 echo "==> Code signing..."

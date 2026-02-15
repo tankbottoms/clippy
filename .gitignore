@@ -9,4 +9,5 @@ clippy
 clippy-linux
 clippy-macos
 *.icns
+!assets/AppIcon.icns
 icon_*.png
