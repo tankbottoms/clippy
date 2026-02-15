@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import Foundation
 
 // MARK: - IPC Types
@@ -31,10 +32,32 @@ struct HelloMessage: Codable {
     let version: String
 }
 
+struct ClippyConfig: Codable {
+    var wipeDelay: Int
+    var maxContentLength: Int
+    var maxHistoryEntries: Int
+    var maxHistoryAge: Int
+    var pollInterval: Int
+    var historyDisplayCount: Int
+    var previewLength: Int
+
+    static let defaults = ClippyConfig(
+        wipeDelay: 5, maxContentLength: 10000, maxHistoryEntries: 1000,
+        maxHistoryAge: 30, pollInterval: 500, historyDisplayCount: 20,
+        previewLength: 50
+    )
+}
+
+struct ConfigResponse: Codable {
+    let type: String
+    let config: ClippyConfig
+}
+
 struct Command: Codable {
     let type: String
     let action: String
     var id: Int?
+    var config: ClippyConfig?
 }
 
 // MARK: - Socket Client
@@ -47,6 +70,7 @@ class SocketClient: NSObject, StreamDelegate {
     private var connected = false
     private var reconnectTimer: Timer?
     var onState: ((StateUpdate) -> Void)?
+    var onConfig: ((ClippyConfig) -> Void)?
     var onConnect: (() -> Void)?
     var onDisconnect: (() -> Void)?
 
@@ -63,7 +87,6 @@ class SocketClient: NSObject, StreamDelegate {
 
         CFStreamCreatePairWithSocketToHost(nil, socketPath as CFString, 0, &readStream, &writeStream)
 
-        // Use Unix domain socket via file path
         let sockFd = socket(AF_UNIX, SOCK_STREAM, 0)
         guard sockFd >= 0 else {
             scheduleReconnect()
@@ -99,16 +122,11 @@ class SocketClient: NSObject, StreamDelegate {
             return
         }
 
-        inputStream = InputStream(fileAtPath: "/dev/fd/\(sockFd)")
-        outputStream = OutputStream(toFileAtPath: "/dev/fd/\(sockFd)", append: true)
-
-        // Use CFSocket-based streams for the file descriptor
         CFStreamCreatePairWithSocket(nil, sockFd, &readStream, &writeStream)
         if let rs = readStream, let ws = writeStream {
             inputStream = rs.takeRetainedValue() as InputStream
             outputStream = ws.takeRetainedValue() as OutputStream
 
-            // Prevent closing the socket when streams are deallocated — we manage it
             CFReadStreamSetProperty(rs.takeUnretainedValue(), CFStreamPropertyKey(rawValue: kCFStreamPropertyShouldCloseNativeSocket), kCFBooleanFalse)
             CFWriteStreamSetProperty(ws.takeUnretainedValue(), CFStreamPropertyKey(rawValue: kCFStreamPropertyShouldCloseNativeSocket), kCFBooleanFalse)
         } else {
@@ -147,6 +165,14 @@ class SocketClient: NSObject, StreamDelegate {
         }
     }
 
+    func sendRaw(_ json: String) {
+        guard connected, let stream = outputStream else { return }
+        let line = (json + "\n").data(using: .utf8)!
+        _ = line.withUnsafeBytes { ptr in
+            stream.write(ptr.bindMemory(to: UInt8.self).baseAddress!, maxLength: line.count)
+        }
+    }
+
     func stream(_ aStream: Stream, handle eventCode: Stream.Event) {
         switch eventCode {
         case .hasBytesAvailable:
@@ -169,14 +195,17 @@ class SocketClient: NSObject, StreamDelegate {
     }
 
     private func processBuffer() {
+        let decoder = JSONDecoder()
         while let range = buffer.range(of: "\n") {
             let line = String(buffer[buffer.startIndex..<range.lowerBound])
             buffer = String(buffer[range.upperBound...])
-            guard !line.isEmpty else { continue }
-            guard let data = line.data(using: .utf8) else { continue }
-            let decoder = JSONDecoder()
+            guard !line.isEmpty, let data = line.data(using: .utf8) else { continue }
+
+            // Try parsing as each known message type
             if let state = try? decoder.decode(StateUpdate.self, from: data), state.type == "state" {
                 onState?(state)
+            } else if let cfg = try? decoder.decode(ConfigResponse.self, from: data), cfg.type == "config" {
+                onConfig?(cfg.config)
             }
         }
     }
@@ -189,13 +218,190 @@ class SocketClient: NSObject, StreamDelegate {
     }
 }
 
+// MARK: - Settings View Model
+
+class SettingsViewModel: ObservableObject {
+    @Published var wipeDelay: Double = 5
+    @Published var maxContentLength: Double = 10000
+    @Published var maxHistoryEntries: Double = 1000
+    @Published var maxHistoryAge: Double = 30
+    @Published var pollInterval: Double = 500
+    @Published var historyDisplayCount: Double = 20
+    @Published var previewLength: Double = 50
+
+    func load(from config: ClippyConfig) {
+        wipeDelay = Double(config.wipeDelay)
+        maxContentLength = Double(config.maxContentLength)
+        maxHistoryEntries = Double(config.maxHistoryEntries)
+        maxHistoryAge = Double(config.maxHistoryAge)
+        pollInterval = Double(config.pollInterval)
+        historyDisplayCount = Double(config.historyDisplayCount)
+        previewLength = Double(config.previewLength)
+    }
+
+    func toConfig() -> ClippyConfig {
+        ClippyConfig(
+            wipeDelay: Int(wipeDelay),
+            maxContentLength: Int(maxContentLength),
+            maxHistoryEntries: Int(maxHistoryEntries),
+            maxHistoryAge: Int(maxHistoryAge),
+            pollInterval: Int(pollInterval),
+            historyDisplayCount: Int(historyDisplayCount),
+            previewLength: Int(previewLength)
+        )
+    }
+}
+
+// MARK: - Settings View
+
+struct SettingsView: View {
+    @ObservedObject var viewModel: SettingsViewModel
+    var onSave: (ClippyConfig) -> Void
+    var onClose: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Clippy Settings")
+                .font(.title2)
+                .fontWeight(.semibold)
+
+            GroupBox("Clipboard") {
+                VStack(alignment: .leading, spacing: 12) {
+                    settingRow(
+                        label: "Auto-wipe delay",
+                        value: $viewModel.wipeDelay,
+                        range: 1...60, step: 1,
+                        unit: "seconds"
+                    )
+                    settingRow(
+                        label: "Poll interval",
+                        value: $viewModel.pollInterval,
+                        range: 100...5000, step: 100,
+                        unit: "ms"
+                    )
+                    settingRow(
+                        label: "Max content length",
+                        value: $viewModel.maxContentLength,
+                        range: 1000...100000, step: 1000,
+                        unit: "chars"
+                    )
+                }
+                .padding(4)
+            }
+
+            GroupBox("History") {
+                VStack(alignment: .leading, spacing: 12) {
+                    settingRow(
+                        label: "Max entries",
+                        value: $viewModel.maxHistoryEntries,
+                        range: 10...10000, step: 10,
+                        unit: "entries"
+                    )
+                    settingRow(
+                        label: "Max age",
+                        value: $viewModel.maxHistoryAge,
+                        range: 1...365, step: 1,
+                        unit: "days"
+                    )
+                    settingRow(
+                        label: "Menu items shown",
+                        value: $viewModel.historyDisplayCount,
+                        range: 5...50, step: 1,
+                        unit: "items"
+                    )
+                    settingRow(
+                        label: "Preview length",
+                        value: $viewModel.previewLength,
+                        range: 10...200, step: 5,
+                        unit: "chars"
+                    )
+                }
+                .padding(4)
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel") { onClose() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Save") {
+                    onSave(viewModel.toConfig())
+                    onClose()
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 420)
+    }
+
+    private func settingRow(
+        label: String, value: Binding<Double>,
+        range: ClosedRange<Double>, step: Double, unit: String
+    ) -> some View {
+        HStack {
+            Text(label)
+                .frame(width: 140, alignment: .trailing)
+            Slider(value: value, in: range, step: step)
+                .frame(width: 140)
+            Text("\(Int(value.wrappedValue)) \(unit)")
+                .font(.system(.body, design: .monospaced))
+                .frame(width: 100, alignment: .leading)
+        }
+    }
+}
+
+// MARK: - Settings Window Controller
+
+class SettingsWindowController {
+    private var window: NSWindow?
+    private let viewModel = SettingsViewModel()
+    private var onSave: ((ClippyConfig) -> Void)?
+
+    func show(config: ClippyConfig, onSave: @escaping (ClippyConfig) -> Void) {
+        self.onSave = onSave
+        viewModel.load(from: config)
+
+        if let existing = window, existing.isVisible {
+            existing.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let settingsView = SettingsView(
+            viewModel: viewModel,
+            onSave: { [weak self] config in self?.onSave?(config) },
+            onClose: { [weak self] in self?.window?.close() }
+        )
+
+        let hostingView = NSHostingView(rootView: settingsView)
+        hostingView.frame = NSRect(x: 0, y: 0, width: 420, height: 400)
+
+        let w = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 400),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        w.title = "Clippy Settings"
+        w.contentView = hostingView
+        w.center()
+        w.isReleasedWhenClosed = false
+        w.makeKeyAndOrderFront(nil)
+
+        NSApp.activate(ignoringOtherApps: true)
+        window = w
+    }
+}
+
 // MARK: - Status Bar App
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var client: SocketClient!
     private var currentState: StateUpdate?
+    private var currentConfig: ClippyConfig?
     private let clippyDir: String
+    private let settingsController = SettingsWindowController()
 
     init(clippyDir: String) {
         self.clippyDir = clippyDir
@@ -217,9 +423,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
+        client.onConfig = { [weak self] config in
+            DispatchQueue.main.async {
+                self?.currentConfig = config
+            }
+        }
+
         client.onConnect = { [weak self] in
             DispatchQueue.main.async {
                 self?.updateTitle(nil)
+                // Request config on connect
+                self?.client.send(Command(type: "command", action: "get_config"))
             }
         }
 
@@ -264,7 +478,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             menu.addItem(NSMenuItem.separator())
 
-            // Countdown controls
             if state.countdown != nil {
                 if state.paused {
                     let item = NSMenuItem(title: "Resume Countdown", action: #selector(resumeCountdown), keyEquivalent: "")
@@ -297,6 +510,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(clearHist)
 
         menu.addItem(NSMenuItem.separator())
+
+        let settings = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
+        settings.target = self
+        menu.addItem(settings)
 
         let quit = NSMenuItem(title: "Quit Clippy", action: #selector(quitApp), keyEquivalent: "q")
         quit.target = self
@@ -335,6 +552,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func clearHistory() {
         client.send(Command(type: "command", action: "clear_history"))
+    }
+
+    @objc private func openSettings() {
+        // Request fresh config before opening
+        client.send(Command(type: "command", action: "get_config"))
+
+        let config = currentConfig ?? ClippyConfig.defaults
+        settingsController.show(config: config) { [weak self] updatedConfig in
+            self?.currentConfig = updatedConfig
+            self?.client.send(Command(type: "command", action: "update_config", config: updatedConfig))
+        }
     }
 
     @objc private func quitApp() {

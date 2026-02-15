@@ -26,6 +26,7 @@ swiftc -O \
   -o "$MACOS/ClippyBar" \
   swift/ClippyBar.swift \
   -framework AppKit \
+  -framework SwiftUI \
   -target arm64-apple-macosx14.0
 
 # Create Info.plist
@@ -59,10 +60,6 @@ cat > "$CONTENTS/Info.plist" << PLIST
 </dict>
 </plist>
 PLIST
-
-# Generate app icon from scissors emoji
-echo "==> Generating app icon..."
-bash scripts/gen-icon.sh "$RESOURCES/AppIcon.icns" 2>/dev/null || echo "    (icon generation skipped, using default)"
 
 # Ad-hoc code sign
 echo "==> Code signing..."
