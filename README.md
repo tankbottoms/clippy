@@ -107,7 +107,7 @@ Config lives at `~/.clippy/config.json`:
 │       │                         │
 │  ┌────┴─────┐ ┌──────────────┐  │
 │  │   db     │ │   cleanup    │  │
-│  │ bun:sqlite│ │  prune timer │  │
+│  │ bun:sql  │ │  prune timer │  │
 │  └──────────┘ └──────────────┘  │
 └─────────────────────────────────┘
 ```
