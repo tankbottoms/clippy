@@ -221,34 +221,60 @@ class SocketClient: NSObject, StreamDelegate {
 // MARK: - Settings View Model
 
 class SettingsViewModel: ObservableObject {
-    @Published var wipeDelay: Double = 5
-    @Published var maxContentLength: Double = 10000
-    @Published var maxHistoryEntries: Double = 1000
-    @Published var maxHistoryAge: Double = 30
-    @Published var pollInterval: Double = 500
-    @Published var historyDisplayCount: Double = 20
-    @Published var previewLength: Double = 50
+    @Published var wipeDelay: String = "5"
+    @Published var maxContentLength: String = "10000"
+    @Published var maxHistoryEntries: String = "1000"
+    @Published var maxHistoryAge: String = "30"
+    @Published var pollInterval: String = "500"
+    @Published var historyDisplayCount: String = "20"
+    @Published var previewLength: String = "50"
 
     func load(from config: ClippyConfig) {
-        wipeDelay = Double(config.wipeDelay)
-        maxContentLength = Double(config.maxContentLength)
-        maxHistoryEntries = Double(config.maxHistoryEntries)
-        maxHistoryAge = Double(config.maxHistoryAge)
-        pollInterval = Double(config.pollInterval)
-        historyDisplayCount = Double(config.historyDisplayCount)
-        previewLength = Double(config.previewLength)
+        wipeDelay = "\(config.wipeDelay)"
+        maxContentLength = "\(config.maxContentLength)"
+        maxHistoryEntries = "\(config.maxHistoryEntries)"
+        maxHistoryAge = "\(config.maxHistoryAge)"
+        pollInterval = "\(config.pollInterval)"
+        historyDisplayCount = "\(config.historyDisplayCount)"
+        previewLength = "\(config.previewLength)"
     }
 
     func toConfig() -> ClippyConfig {
         ClippyConfig(
-            wipeDelay: Int(wipeDelay),
-            maxContentLength: Int(maxContentLength),
-            maxHistoryEntries: Int(maxHistoryEntries),
-            maxHistoryAge: Int(maxHistoryAge),
-            pollInterval: Int(pollInterval),
-            historyDisplayCount: Int(historyDisplayCount),
-            previewLength: Int(previewLength)
+            wipeDelay: Int(wipeDelay) ?? 5,
+            maxContentLength: Int(maxContentLength) ?? 10000,
+            maxHistoryEntries: Int(maxHistoryEntries) ?? 1000,
+            maxHistoryAge: Int(maxHistoryAge) ?? 30,
+            pollInterval: Int(pollInterval) ?? 500,
+            historyDisplayCount: Int(historyDisplayCount) ?? 20,
+            previewLength: Int(previewLength) ?? 50
         )
+    }
+}
+
+// MARK: - Numeric Text Field
+
+struct NumericField: View {
+    let label: String
+    @Binding var text: String
+    let unit: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(label)
+                .frame(width: 140, alignment: .trailing)
+            TextField("", text: $text)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 80)
+                .multilineTextAlignment(.trailing)
+                .onReceive(text.publisher.collect()) { chars in
+                    let filtered = String(chars.filter { $0.isNumber })
+                    if filtered != text { text = filtered }
+                }
+            Text(unit)
+                .foregroundColor(.secondary)
+                .frame(width: 60, alignment: .leading)
+        }
     }
 }
 
@@ -261,62 +287,23 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Clippy Settings")
-                .font(.title2)
-                .fontWeight(.semibold)
-
             GroupBox("Clipboard") {
-                VStack(alignment: .leading, spacing: 12) {
-                    settingRow(
-                        label: "Auto-wipe delay",
-                        value: $viewModel.wipeDelay,
-                        range: 1...60, step: 1,
-                        unit: "seconds"
-                    )
-                    settingRow(
-                        label: "Poll interval",
-                        value: $viewModel.pollInterval,
-                        range: 100...5000, step: 100,
-                        unit: "ms"
-                    )
-                    settingRow(
-                        label: "Max content length",
-                        value: $viewModel.maxContentLength,
-                        range: 1000...100000, step: 1000,
-                        unit: "chars"
-                    )
+                VStack(spacing: 10) {
+                    NumericField(label: "Auto-wipe delay", text: $viewModel.wipeDelay, unit: "seconds")
+                    NumericField(label: "Poll interval", text: $viewModel.pollInterval, unit: "ms")
+                    NumericField(label: "Max content length", text: $viewModel.maxContentLength, unit: "chars")
                 }
-                .padding(4)
+                .padding(6)
             }
 
             GroupBox("History") {
-                VStack(alignment: .leading, spacing: 12) {
-                    settingRow(
-                        label: "Max entries",
-                        value: $viewModel.maxHistoryEntries,
-                        range: 10...10000, step: 10,
-                        unit: "entries"
-                    )
-                    settingRow(
-                        label: "Max age",
-                        value: $viewModel.maxHistoryAge,
-                        range: 1...365, step: 1,
-                        unit: "days"
-                    )
-                    settingRow(
-                        label: "Menu items shown",
-                        value: $viewModel.historyDisplayCount,
-                        range: 5...50, step: 1,
-                        unit: "items"
-                    )
-                    settingRow(
-                        label: "Preview length",
-                        value: $viewModel.previewLength,
-                        range: 10...200, step: 5,
-                        unit: "chars"
-                    )
+                VStack(spacing: 10) {
+                    NumericField(label: "Max entries", text: $viewModel.maxHistoryEntries, unit: "entries")
+                    NumericField(label: "Max age", text: $viewModel.maxHistoryAge, unit: "days")
+                    NumericField(label: "Menu items shown", text: $viewModel.historyDisplayCount, unit: "items")
+                    NumericField(label: "Preview length", text: $viewModel.previewLength, unit: "chars")
                 }
-                .padding(4)
+                .padding(6)
             }
 
             HStack {
@@ -331,22 +318,7 @@ struct SettingsView: View {
             }
         }
         .padding(20)
-        .frame(width: 420)
-    }
-
-    private func settingRow(
-        label: String, value: Binding<Double>,
-        range: ClosedRange<Double>, step: Double, unit: String
-    ) -> some View {
-        HStack {
-            Text(label)
-                .frame(width: 140, alignment: .trailing)
-            Slider(value: value, in: range, step: step)
-                .frame(width: 140)
-            Text("\(Int(value.wrappedValue)) \(unit)")
-                .font(.system(.body, design: .monospaced))
-                .frame(width: 100, alignment: .leading)
-        }
+        .frame(width: 400)
     }
 }
 
@@ -374,10 +346,11 @@ class SettingsWindowController {
         )
 
         let hostingView = NSHostingView(rootView: settingsView)
-        hostingView.frame = NSRect(x: 0, y: 0, width: 420, height: 400)
+        let fittingSize = hostingView.fittingSize
+        hostingView.frame = NSRect(origin: .zero, size: fittingSize)
 
         let w = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 400),
+            contentRect: NSRect(origin: .zero, size: fittingSize),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
