@@ -1,12 +1,23 @@
 # Clippy
 
-Clipboard security monitor for macOS. Watches your clipboard, encrypts and stores history in SQLite, and auto-wipes the clipboard after a configurable countdown.
+Clipboard security monitor for macOS. If you're paranoid about applications on your machine silently watching your clipboard -- sniping private keys, seed phrases, passwords, or anything else sensitive and exfiltrating them to a malicious collector -- Clippy keeps your clipboard empty by default. Copied content is immediately encrypted and stored locally in SQLite, then the clipboard is wiped after a configurable countdown. Your history stays under your control: encrypted at rest, never exposed in plaintext, and prunable on your terms.
 
 Lives in the menu bar as `✂` with a countdown timer.
 
-| Menu Bar | Settings |
-|:---:|:---:|
-| ![Menu Bar](assets/clippy-menu-bar.png) | ![Settings](assets/clippy-settings.png) |
+<table>
+<tr>
+<td align="center" valign="top"><strong>Menu Bar</strong></td>
+<td align="center" valign="top"><strong>Settings</strong></td>
+</tr>
+<tr>
+<td valign="top"><img src="assets/clippy-menu-bar.png" alt="Menu Bar"></td>
+<td valign="top"><img src="assets/clippy-settings.png" alt="Settings"></td>
+</tr>
+<tr>
+<td valign="top"><em>The scissors icon sits idle by default. When you copy something, a countdown appears (e.g. <code>✂ 5s</code>, <code>✂ 4s</code> ...) and the clipboard is wiped when it reaches zero.</em></td>
+<td valign="top"><em>Configure wipe delay, history limits, polling interval, and display preferences. These map to <code>~/.clippy/config.json</code> -- edit the file directly or use the Settings UI from the menu bar.</em></td>
+</tr>
+</table>
 
 ## Features
 
