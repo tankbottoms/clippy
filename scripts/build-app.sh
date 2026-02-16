@@ -3,31 +3,50 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+ARCH="${1:-arm64}"
 VERSION=$(grep '"version"' package.json | head -1 | sed 's/.*: "\(.*\)".*/\1/')
 DIST="dist"
-APP="$DIST/Clippy.app"
+
+case "$ARCH" in
+  arm64)
+    BUN_TARGET="bun-darwin-arm64"
+    SWIFT_TARGET="arm64-apple-macosx14.0"
+    APP="$DIST/Clippy.app"
+    ;;
+  x86_64|x64|intel)
+    ARCH="x86_64"
+    BUN_TARGET="bun-darwin-x64"
+    SWIFT_TARGET="x86_64-apple-macosx14.0"
+    APP="$DIST/Clippy-x86_64.app"
+    ;;
+  *)
+    echo "Usage: $0 [arm64|x86_64]" >&2
+    exit 1
+    ;;
+esac
+
 CONTENTS="$APP/Contents"
 MACOS="$CONTENTS/MacOS"
 RESOURCES="$CONTENTS/Resources"
 
-echo "==> Building Clippy v${VERSION}"
+echo "==> Building Clippy v${VERSION} ($ARCH)"
 
 # Clean previous build
 rm -rf "$APP"
 mkdir -p "$MACOS" "$RESOURCES"
 
 # Compile Bun binary
-echo "==> Compiling Bun daemon..."
-bun build src/index.ts --compile --target=bun-darwin-arm64 --outfile "$MACOS/clippy"
+echo "==> Compiling Bun daemon ($BUN_TARGET)..."
+bun build src/index.ts --compile --target="$BUN_TARGET" --outfile "$MACOS/clippy"
 
 # Compile Swift binary
-echo "==> Compiling Swift status bar..."
+echo "==> Compiling Swift status bar ($SWIFT_TARGET)..."
 swiftc -O \
   -o "$MACOS/ClippyBar" \
   swift/ClippyBar.swift \
   -framework AppKit \
   -framework SwiftUI \
-  -target arm64-apple-macosx14.0
+  -target "$SWIFT_TARGET"
 
 # Create Info.plist
 cat > "$CONTENTS/Info.plist" << PLIST

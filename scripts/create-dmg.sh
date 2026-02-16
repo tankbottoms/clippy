@@ -3,25 +3,42 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+ARCH="${1:-arm64}"
 VERSION=$(grep '"version"' package.json | head -1 | sed 's/.*: "\(.*\)".*/\1/')
-APP="dist/Clippy.app"
-DMG="dist/Clippy-${VERSION}.dmg"
+
+case "$ARCH" in
+  arm64)
+    APP="dist/Clippy.app"
+    DMG="dist/Clippy-${VERSION}.dmg"
+    ;;
+  x86_64|x64|intel)
+    ARCH="x86_64"
+    APP="dist/Clippy-x86_64.app"
+    DMG="dist/Clippy-${VERSION}-x86_64.dmg"
+    ;;
+  *)
+    echo "Usage: $0 [arm64|x86_64]" >&2
+    exit 1
+    ;;
+esac
+
 STAGING="dist/dmg-staging"
 ICNS="$APP/Contents/Resources/AppIcon.icns"
 
 if [ ! -d "$APP" ]; then
-  echo "App bundle not found. Run scripts/build-app.sh first."
+  echo "App bundle not found: $APP" >&2
+  echo "Run: scripts/build-app.sh $ARCH" >&2
   exit 1
 fi
 
-echo "==> Creating DMG..."
+echo "==> Creating DMG ($ARCH)..."
 
 # Clean
 rm -rf "$STAGING" "$DMG"
 mkdir -p "$STAGING"
 
 # Stage app and symlink
-cp -r "$APP" "$STAGING/"
+cp -r "$APP" "$STAGING/Clippy.app"
 ln -s /Applications "$STAGING/Applications"
 
 # Copy app icon as DMG volume icon
